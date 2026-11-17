@@ -43,8 +43,9 @@ function draw() {
 window.setScore = (i, n) => { scores[i] = n; draw(); };
 
 window.simpanSiswa = async () => {
-  const namaInput = document.getElementById('nama').value.trim();
-  const kelasInput = document.getElementById('kelas').value;
+  // Membersihkan spasi ganda dan mengubah ke huruf asli
+  const namaInput = document.getElementById('nama').value.trim().replace(/\s+/g, ' ');
+  const kelasInput = document.getElementById('kelas').value.trim();
   
   if (!namaInput || !kelasInput || kelasInput === "") { toast('Isi nama dan pilih kelas dulu ya.', 'error'); return; }
   if (scores.includes(0)) { toast('Semua aspek harus dinilai (1–5).', 'error'); return; }
@@ -60,24 +61,12 @@ window.simpanSiswa = async () => {
     btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
   }
 
-  // --- LAPIS 2: VALIDASI PESERTA (Harus terdaftar di tabel participants) ---
-  const { data: validParticipant } = await sb.from('participants')
-    .select('id')
-    .ilike('nama', namaInput) // Pencarian nama tidak peduli besar/kecil
-    .eq('kelas', kelasInput)
-    .maybeSingle();
-
-  if (!validParticipant) {
-    toast('Nama dan Kelas tidak ditemukan di daftar peserta pameran. Pastikan sesuai dengan data saat kamu mengumpulkan poster.', 'error');
-    btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
-  }
-
-  // --- LAPIS 3: CEK DATABASE (Cegah spam hapus cache/incognito) ---
+  // --- LAPIS 2: CEK DATABASE (Cegah spam hapus cache/incognito) ---
   const { data: existing } = await sb.from('assessments')
     .select('id')
     .eq('poster_id', curPoster.id)
     .ilike('reviewer_name', namaInput)
-    .eq('reviewer_kelas', kelasInput)
+    .ilike('reviewer_kelas', kelasInput)
     .eq('reviewer_type', 'siswa')
     .maybeSingle();
 
@@ -97,10 +86,11 @@ window.simpanSiswa = async () => {
     kritik_saran: document.getElementById('kritik').value.trim() || null
   };
   
-  // --- LAPIS 4: Eksekusi Simpan ke Database ---
+  // --- LAPIS 3: Eksekusi Simpan ke Database ---
   const { error } = await sb.from('assessments').insert(payload);
   
   if (error) { 
+    // Tangkap error dari database (jika trigger/index unik menolak)
     toast('Gagal menyimpan. Pastikan kamu belum pernah menilai poster ini.', 'error'); 
     btn.disabled = false; btn.textContent = 'Kirim Penilaian';
     return; 
@@ -140,7 +130,15 @@ window.simpanSiswa = async () => {
           <label>Kelas Kamu</label>
           <select id="kelas" required>
             <option value="" disabled ${!localStorage.getItem('siswa_kelas') ? 'selected' : ''}>-- Pilih --</option>
-            ${['X RPL 1','X RPL 2','X RPL 3','X APHP 1','X APHP 2','X LPS 1','X LPS 2','X DKV 1','X DKV 2','X KULINER 1','X KULINER 2','X KULINER 3'].map(k => 
+            ${[
+              'X RPL 1','X RPL 2','X RPL 3', 'XI RPL 1','XI RPL 2','XI RPL 3', 'XII RPL 1','XII RPL 2','XII RPL 3',
+              'X APHP 1','X APHP 2', 'XI APHP 1','XI APHP 2', 'XII APHP 1','XII APHP 2',
+              'X LPS 1','X LPS 2', 'XI LPS 1','XI LPS 2', 'XII LPS 1','XII LPS 2',
+              'X DKV 1','X DKV 2', 'XI DKV 1','XI DKV 2', 'XII DKV 1','XII DKV 2',
+              'X KULINER 1','X KULINER 2','X KULINER 3', 
+              'XI KULINER 1','XI KULINER 2','XI KULINER 3', 
+              'XII KULINER 1','XII KULINER 2','XII KULINER 3'
+            ].map(k => 
               `<option value="${k}" ${localStorage.getItem('siswa_kelas') === k ? 'selected' : ''}>${k}</option>`
             ).join('')}
           </select>
