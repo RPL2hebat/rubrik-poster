@@ -43,7 +43,6 @@ function draw() {
 window.setScore = (i, n) => { scores[i] = n; draw(); };
 
 window.simpanSiswa = async () => {
-  // Membersihkan spasi ganda dan mengubah ke huruf asli
   const namaInput = document.getElementById('nama').value.trim().replace(/\s+/g, ' ');
   const kelasInput = document.getElementById('kelas').value.trim();
   
@@ -90,14 +89,15 @@ window.simpanSiswa = async () => {
   const { error } = await sb.from('assessments').insert(payload);
   
   if (error) { 
-    // Tangkap error dari database (jika trigger/index unik menolak)
     toast('Gagal menyimpan. Pastikan kamu belum pernah menilai poster ini.', 'error'); 
     btn.disabled = false; btn.textContent = 'Kirim Penilaian';
     return; 
   }
   
+  // Simpan ingatan di HP bahwa poster INI sudah dinilai
   localStorage.setItem('siswa_nama', namaInput);
   localStorage.setItem('siswa_kelas', kelasInput);
+  localStorage.setItem('nilai_' + curPoster.id, '1');
   
   toast('Terima kasih! Penilaianmu tersimpan.', 'success');
   setTimeout(() => location.href = 'detail.html?kode=' + encodeURIComponent(curPoster.kode), 1000);
@@ -109,6 +109,19 @@ window.simpanSiswa = async () => {
   const { data: p, error } = await sb.from('posters').select('*, participants(nama,kelas)').eq('kode', kode).single();
   if (error || !p) { document.getElementById('content').innerHTML = '<div class="empty">Poster tidak ditemukan.</div>'; return; }
   curPoster = p;
+
+  // --- CEK APAKAH SISWA DI HP INI SUDAH PERNAH MENILAI POSTER INI ---
+  const sudahNilai = localStorage.getItem('nilai_' + p.id);
+  if (sudahNilai) {
+    document.getElementById('content').innerHTML = `
+      <div class="card text-center">
+        <h3 style="margin-bottom:10px">Kamu sudah menilai poster ini!</h3>
+        <p class="text-muted">Terima kasih atas partisipasimu dalam memberikan penilaian.</p>
+        <a href="detail.html?kode=${encodeURIComponent(p.kode)}" class="btn btn-primary mt-2">Kembali ke Poster</a>
+      </div>`;
+    return;
+  }
+  // -------------------------------------------------------------------
 
   document.getElementById('content').innerHTML = `
     <a href="detail.html?kode=${encodeURIComponent(p.kode)}" class="btn btn-ghost btn-sm mb-2">← Kembali ke poster</a>
