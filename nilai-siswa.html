@@ -43,29 +43,72 @@ function draw() {
 window.setScore = (i, n) => { scores[i] = n; draw(); };
 
 window.simpanSiswa = async () => {
-  const nama = document.getElementById('nama').value.trim();
-  const kelas = document.getElementById('kelas').value.trim();
-  if (!nama || !kelas) { toast('Isi nama dan kelas dulu ya.', 'error'); return; }
+  const namaInput = document.getElementById('nama').value.trim();
+  const kelasInput = document.getElementById('kelas').value;
+  
+  if (!namaInput || !kelasInput || kelasInput === "") { toast('Isi nama dan pilih kelas dulu ya.', 'error'); return; }
   if (scores.includes(0)) { toast('Semua aspek harus dinilai (1–5).', 'error'); return; }
   
+  const btn = document.querySelector('button[onclick="simpanSiswa()"]');
+  btn.disabled = true; btn.textContent = 'Mengecek data...';
+
+  // --- LAPIS 1: Cegah menilai poster sendiri ---
+  const pembuatNama = (curPoster.participants?.nama || '').trim().toLowerCase();
+  const pembuatKelas = (curPoster.participants?.kelas || '').trim().toLowerCase();
+  if (namaInput.toLowerCase() === pembuatNama && kelasInput.toLowerCase() === pembuatKelas) {
+    toast('Kamu tidak bisa menilai postermu sendiri!', 'error'); 
+    btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
+  }
+
+  // --- LAPIS 2: VALIDASI PESERTA (Harus terdaftar di tabel participants) ---
+  const { data: validParticipant } = await sb.from('participants')
+    .select('id')
+    .ilike('nama', namaInput) // Pencarian nama tidak peduli besar/kecil
+    .eq('kelas', kelasInput)
+    .maybeSingle();
+
+  if (!validParticipant) {
+    toast('Nama dan Kelas tidak ditemukan di daftar peserta pameran. Pastikan sesuai dengan data saat kamu mengumpulkan poster.', 'error');
+    btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
+  }
+
+  // --- LAPIS 3: CEK DATABASE (Cegah spam hapus cache/incognito) ---
+  const { data: existing } = await sb.from('assessments')
+    .select('id')
+    .eq('poster_id', curPoster.id)
+    .ilike('reviewer_name', namaInput)
+    .eq('reviewer_kelas', kelasInput)
+    .eq('reviewer_type', 'siswa')
+    .maybeSingle();
+
+  if (existing) {
+    toast('Nama dan Kelas ini sudah pernah menilai poster ini!', 'error');
+    btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
+  }
+
+  btn.textContent = 'Menyimpan...';
   const payload = {
     poster_id: curPoster.id,
-    judge_id: null, // Siswa tidak punya ID guru
+    judge_id: null,
     reviewer_type: 'siswa',
-    reviewer_name: nama,
-    reviewer_kelas: kelas,
+    reviewer_name: namaInput,
+    reviewer_kelas: kelasInput,
     s1: scores[0], s2: scores[1], s3: scores[2], s4: scores[3],
     kritik_saran: document.getElementById('kritik').value.trim() || null
   };
   
+  // --- LAPIS 4: Eksekusi Simpan ke Database ---
   const { error } = await sb.from('assessments').insert(payload);
-  if (error) { toast('Gagal menyimpan: ' + error.message, 'error'); return; }
   
-  // Simpan nama di localStorage agar tidak ketik ulang
-  localStorage.setItem('siswa_nama', nama);
-  localStorage.setItem('siswa_kelas', kelas);
-  localStorage.setItem('nilai_' + curPoster.id, '1'); // cegah menilai 2x di HP yang sama
-
+  if (error) { 
+    toast('Gagal menyimpan. Pastikan kamu belum pernah menilai poster ini.', 'error'); 
+    btn.disabled = false; btn.textContent = 'Kirim Penilaian';
+    return; 
+  }
+  
+  localStorage.setItem('siswa_nama', namaInput);
+  localStorage.setItem('siswa_kelas', kelasInput);
+  
   toast('Terima kasih! Penilaianmu tersimpan.', 'success');
   setTimeout(() => location.href = 'detail.html?kode=' + encodeURIComponent(curPoster.kode), 1000);
 };
@@ -77,13 +120,6 @@ window.simpanSiswa = async () => {
   if (error || !p) { document.getElementById('content').innerHTML = '<div class="empty">Poster tidak ditemukan.</div>'; return; }
   curPoster = p;
 
-  // Cek apakah siswa di device ini sudah menilai poster ini
-  const sudahNilai = localStorage.getItem('nilai_' + p.id);
-  if (sudahNilai) {
-    document.getElementById('content').innerHTML = `<div class="card text-center"><h3>Kamu sudah menilai poster ini!</h3><p class="text-muted">Terima kasih atas partisipasimu.</p><a href="detail.html?kode=${p.kode}" class="btn btn-primary mt-2">Kembali ke Poster</a></div>`;
-    return;
-  }
-
   document.getElementById('content').innerHTML = `
     <a href="detail.html?kode=${encodeURIComponent(p.kode)}" class="btn btn-ghost btn-sm mb-2">← Kembali ke poster</a>
     <div class="card mb-2">
@@ -94,9 +130,21 @@ window.simpanSiswa = async () => {
     </div>
     <div class="card">
       <h3 style="margin-top:0">Beri Penilaian (Siswa)</h3>
+      <p class="text-muted" style="font-size:0.85rem; margin-top:-8px;">Wajib menggunakan Nama dan Kelas asli kamu.</p>
       <div class="flex gap-2" style="flex-wrap:wrap">
-        <div style="flex:1;min-width:150px"><label>Nama Kamu</label><input id="nama" value="${localStorage.getItem('siswa_nama')||''}"></div>
-        <div style="flex:1;min-width:150px"><label>Kelas Kamu</label><input id="kelas" value="${localStorage.getItem('siswa_kelas')||''}"></div>
+        <div style="flex:1;min-width:150px">
+          <label>Nama Kamu</label>
+          <input id="nama" value="${localStorage.getItem('siswa_nama')||''}">
+        </div>
+        <div style="flex:1;min-width:150px">
+          <label>Kelas Kamu</label>
+          <select id="kelas" required>
+            <option value="" disabled ${!localStorage.getItem('siswa_kelas') ? 'selected' : ''}>-- Pilih --</option>
+            ${['X RPL 1','X RPL 2','X RPL 3','X APHP 1','X APHP 2','X LPS 1','X LPS 2','X DKV 1','X DKV 2','X KULINER 1','X KULINER 2','X KULINER 3'].map(k => 
+              `<option value="${k}" ${localStorage.getItem('siswa_kelas') === k ? 'selected' : ''}>${k}</option>`
+            ).join('')}
+          </select>
+        </div>
       </div>
       <div id="crits" class="mt-2"></div>
       <label>Kritik & saran (opsional)</label>
