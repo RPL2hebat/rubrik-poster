@@ -48,7 +48,7 @@ window.bukaDetail = (posterId, judul) => {
     list.sort((a,b) => (a.reviewer_type === 'guru' ? -1 : 1));
     
     document.getElementById('modalBody').innerHTML = list.map(a => {
-      const nama = a.reviewer_type === 'guru' ? (a.profiles?.full_name || 'Guru') : a.reviewer_name;
+      const nama = a.judge_id ? (a.profiles?.full_name || 'Guru') : a.reviewer_name;
       const kelas = a.reviewer_type === 'siswa' ? ` (${a.reviewer_kelas})` : '';
       const badgeColor = a.reviewer_type === 'guru' ? 'background:var(--primary);color:white' : 'background:var(--border);color:var(--text)';
       
