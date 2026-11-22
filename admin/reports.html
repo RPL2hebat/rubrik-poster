@@ -52,7 +52,19 @@ window.togglePublish = async () => {
 window.exportCsv = () => {
   const rows = [
     ['Kode','Judul','Siswa','Kelas','Tipe Penilai','Penilai','Kelas Penilai','S1','S2','S3','S4','Skor','Nilai','Tanggal'],
-    ...detailData.map(d => [d.posters?.kode, d.posters?.judul, d.posters?.participants?.nama, d.posters?.participants?.kelas, d.reviewer_type, d.reviewer_type === 'guru' ? d.profiles?.full_name : d.reviewer_name, d.reviewer_kelas, d.s1, d.s2, d.s3, d.s4, d.skor, d.nilai, new Date(d.created_at).toLocaleString('id-ID')])
+    ...detailData.map(d => {
+      // LOGIKA BARU: Cek apakah guru login (judge_id) atau tidak
+      let namaPenilai = d.reviewer_name || '—';
+      if (d.reviewer_type === 'guru' && d.judge_id) {
+        namaPenilai = d.profiles?.full_name || 'Guru (Login)';
+      }
+      
+      return [
+        d.posters?.kode, d.posters?.judul, d.posters?.participants?.nama, d.posters?.participants?.kelas, 
+        d.reviewer_type, namaPenilai, d.reviewer_kelas || '-', 
+        d.s1, d.s2, d.s3, d.s4, d.skor, d.nilai, new Date(d.created_at).toLocaleString('id-ID')
+      ];
+    })
   ];
   const csv = rows.map(r => r.map(c => '"' + String(c ?? '').replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -89,9 +101,27 @@ window.exportCsv = () => {
        </tbody></table>`
     : '<div class="empty">Belum ada poster.</div>';
 
+  // LOGIKA BARU UNTUK TABEL RINCIAN
   document.getElementById('detail').innerHTML = detailData.length
     ? `<table class="rank-table"><thead><tr><th>Kode</th><th>Judul</th><th>Penilai</th><th>Skor</th><th>Nilai</th><th>Tanggal</th><th>Kritik/Saran</th></tr></thead><tbody>
-       ${detailData.map(d => `<tr><td>${esc(d.posters?.kode)}</td><td>${esc(d.posters?.judul)}</td><td>${d.reviewer_type === 'siswa' ? esc(d.reviewer_name||'—') + (d.reviewer_kelas ? ' (' + esc(d.reviewer_kelas) + ')' : '') : esc(d.profiles?.full_name||'—')}<br><small class="badge">${esc(d.reviewer_type||'guru')}</small></td><td>${d.skor}</td><td><b>${Number(d.nilai).toFixed(0)}</b></td><td>${new Date(d.created_at).toLocaleDateString('id-ID')}</td><td style="max-width:240px;white-space:normal">${esc(d.kritik_saran||'—')}</td></tr>`).join('')}
+       ${detailData.map(d => {
+         let namaTampil = '—';
+         if (d.reviewer_type === 'guru') {
+           namaTampil = d.judge_id ? esc(d.profiles?.full_name || 'Guru (Login)') : esc(d.reviewer_name || 'Guru (Tanpa Login)');
+         } else {
+           namaTampil = esc(d.reviewer_name || '—') + (d.reviewer_kelas ? ' (' + esc(d.reviewer_kelas) + ')' : '');
+         }
+
+         return `<tr>
+           <td>${esc(d.posters?.kode)}</td>
+           <td>${esc(d.posters?.judul)}</td>
+           <td>${namaTampil}<br><small class="badge">${esc(d.reviewer_type||'guru')}</small></td>
+           <td>${d.skor}</td>
+           <td><b>${Number(d.nilai).toFixed(0)}</b></td>
+           <td>${new Date(d.created_at).toLocaleDateString('id-ID')}</td>
+           <td style="max-width:240px;white-space:normal">${esc(d.kritik_saran||'—')}</td>
+         </tr>`;
+       }).join('')}
        </tbody></table>`
     : '<div class="empty">Belum ada penilaian.</div>';
 })();
